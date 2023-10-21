@@ -30,6 +30,17 @@ const initializeDatabaseAndServer = async () => {
 
 initializeDatabaseAndServer();
 
+const responseData = (data) => {
+  return {
+    id: data.id,
+    todo: data.todo,
+    priority: data.priority,
+    status: data.status,
+    category: data.category,
+    dueDate: data.due_date, // Corrected the date format (month and day)
+  };
+};
+
 app.get("/todos", async (request, response) => {
   const { status, priority, category, search_q } = request.query;
   const possibleStatus = ["TO DO", "IN PROGRESS", "DONE", undefined];
@@ -72,7 +83,10 @@ app.get("/todos", async (request, response) => {
   try {
     const dbResponse = await database.all(selectQuery);
     if (dbResponse) {
-      response.status(200).send(dbResponse);
+      const newDbResponse = dbResponse.map((eachItem) =>
+        responseData(eachItem)
+      );
+      response.status(200).send(newDbResponse);
     } else {
       response.status(404).send(`No data found`);
     }
@@ -85,9 +99,10 @@ app.get("/todos/:todoId/", async (request, response) => {
   const { todoId } = request.params;
   const selectQuery = `SELECT * FROM todo WHERE id = '${todoId}';`;
   try {
-    const dbResponse = await database.all(selectQuery);
+    const dbResponse = await database.get(selectQuery);
     if (dbResponse) {
-      response.status(200).send(dbResponse);
+      const newDbResponse = responseData(dbResponse);
+      response.status(200).send(newDbResponse);
     } else {
       response.status(404).send(`No data found`);
     }
@@ -110,8 +125,11 @@ app.get("/agenda/", async (request, response) => {
 
   try {
     const dbResponse = await database.all(selectQuery);
-    if (dbResponse && dbResponse.length > 0) {
-      response.status(200).send(dbResponse);
+    if (dbResponse.length > 0) {
+      const newDbResponse = dbResponse.map((eachItem) =>
+        responseData(eachItem)
+      );
+      response.status(200).send(newDbResponse);
     } else {
       response.status(404).send(`No data found`);
     }
@@ -162,41 +180,51 @@ app.post("/todos/", async (request, response) => {
 
 app.put("/todos/:todoId/", async (request, response) => {
   const { todoId } = request.params;
-  const { todo, priority, status, category } = request.body;
+  const { todo, priority, status, category, dueDate } = request.body;
+
+  const possibleStatus = ["TO DO", "IN PROGRESS", "DONE", undefined];
+  const possiblePriority = ["HIGH", "MEDIUM", "LOW", undefined];
+  const possibleCategory = ["WORK", "HOME", "LEARNING", undefined];
+
+  if (!possibleStatus.includes(status)) {
+    response.status(400).send("Invalid Todo Status");
+    return;
+  }
+
+  if (!possiblePriority.includes(priority)) {
+    response.status(400).send("Invalid Todo Priority");
+    return;
+  }
+
+  if (!possibleCategory.includes(category)) {
+    response.status(400).send("Invalid Todo Category");
+    return;
+  }
+
+  //const formattedDueDate = format(new Date(dueDate), "yyyy-MM-dd");
   let updateQuery;
   let responseBody;
-  if (
-    todo !== undefined &&
-    priority === undefined &&
-    status === undefined &&
-    category === undefined
-  ) {
-    updateQuery = `UPDATE todo SET todo='${todo}' WHERE id='${todoId}';`;
-    responseBody = `Todo Updated`;
-  } else if (
-    status !== undefined &&
-    todo === undefined &&
-    priority === undefined &&
-    category === undefined
-  ) {
-    updateQuery = `UPDATE todo SET status='${status}' WHERE id='${todoId}';`;
-    responseBody = `Status Updated`;
-  } else if (
-    priority !== undefined &&
-    status === undefined &&
-    todo === undefined &&
-    category === undefined
-  ) {
-    updateQuery = `UPDATE todo SET priority='${priority}' WHERE id='${todoId}';`;
-    responseBody = `Priority Updated`;
-  } else if (
-    category !== undefined &&
-    status === undefined &&
-    todo === undefined &&
-    priority === undefined
-  ) {
-    updateQuery = `UPDATE todo SET priority='${priority}' WHERE id='${todoId}';`;
-    responseBody = `Category Updated`;
+
+  if (todo !== undefined) {
+    updateQuery = `UPDATE todo SET todo = '${todo}' WHERE id = '${todoId}';`;
+    responseBody = "Todo Updated";
+  } else if (status !== undefined) {
+    updateQuery = `UPDATE todo SET status = '${status}' WHERE id = '${todoId}';`;
+    responseBody = "Status Updated";
+  } else if (priority !== undefined) {
+    updateQuery = `UPDATE todo SET priority = '${priority}' WHERE id = '${todoId}';`;
+    responseBody = "Priority Updated";
+  } else if (category !== undefined) {
+    updateQuery = `UPDATE todo SET category = '${category}' WHERE id = '${todoId}';`;
+    responseBody = "Category Updated";
+  } else if (dueDate !== undefined) {
+    const isDateValid = isValid(new Date(dueDate));
+    if (!isDateValid) {
+      response.status(400).send("Invalid Due Date");
+      return;
+    }
+    updateQuery = `UPDATE todo SET due_date = '${dueDate}' WHERE id = '${todoId}';`;
+    responseBody = "Due Date Updated";
   }
 
   try {
@@ -209,7 +237,7 @@ app.put("/todos/:todoId/", async (request, response) => {
 
 app.delete("/todos/:todoId/", async (request, response) => {
   const { todoId } = request.params;
-  const deleteQuery = `DELETE todo WHERE id ='${todoId}'`;
+  const deleteQuery = `DELETE FROM todo WHERE id ='${todoId}'`;
 
   try {
     const dbResponse = await database.run(deleteQuery);
